@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>MixMaster Party</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & Babel -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- PeerJS for WebRTC/STUN -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .pb-safe {
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        ::-webkit-scrollbar {
+            display: none;
+        }
+
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        @keyframes pulse-subtle {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.8;
+                transform: scale(0.98);
+            }
+        }
+
+        .animate-pulse-subtle {
+            animation: pulse-subtle 3s infinite ease-in-out;
+        }
+    </style>
+</head>
+
+<body class="bg-neutral-950 text-white">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- Question Banks ---
+        const questionBank = {
+            'truth-or-dare': {
+                truths: [
+                    "What's your most embarrassing moment?",
+                    "What's a secret you've never told anyone?",
+                    "Who was your first crush?",
+                    "What's the biggest lie you've ever told?",
+                    "What's your biggest fear?",
+                    "Have you ever cheated on a test?",
+                    "What's the most childish thing you still do?",
+                    "What's your guilty pleasure?",
+                    "Who in this room would you most like to swap lives with?",
+                    "What's the worst date you've ever been on?",
+                    "Have you ever been caught doing something you shouldn't?",
+                    "What's the dumbest thing you've ever done?",
+                    "Who do you secretly have a crush on?",
+                    "What's your most unpopular opinion?",
+                    "What's the weirdest dream you've ever had?"
+                ],
+                dares: [
+                    "Do your best dance move right now!",
+                    "Let someone go through your phone for 30 seconds",
+                    "Send a text to your crush",
+                    "Do 10 pushups right now",
+                    "Speak in an accent for the next 3 rounds",
+                    "Let the group post something on your social media",
+                    "Call a random contact and sing happy birthday",
+                    "Do your best celebrity impression",
+                    "Keep a straight face while others try to make you laugh for 1 minute",
+                    "Say something embarrassing and post it to your story",
+                    "Let someone draw on your face",
+                    "Talk in a baby voice for the next 2 rounds",
+                    "Do a dramatic reading of a text from your phone",
+                    "Act like a chicken for 30 seconds",
+                    "Give a compliment to everyone in the room"
+                ]
+            },
+            'never-have-i-ever': [
+                "Never have I ever lied to get out of plans",
+                "Never have I ever pretended to laugh at a joke I didn't get",
+                "Never have I ever stalked someone on social media",
+                "Never have I ever eaten food off the floor",
+                "Never have I ever broken something and blamed someone else",
+                "Never have I ever re-gifted a present",
+                "Never have I ever faked being sick to skip work/school",
+                "Never have I ever had a crush on a friend's partner",
+                "Never have I ever gone a whole day without brushing my teeth",
+                "Never have I ever lied about my age",
+                "Never have I ever been kicked out of somewhere",
+                "Never have I ever cried during a movie",
+                "Never have I ever ghosted someone",
+                "Never have I ever stolen something",
+                "Never have I ever pretended to be someone else online"
+            ],
+            'would-you-rather': [
+                "Would you rather be able to fly or be invisible?",
+                "Would you rather never use social media again or never watch movies again?",
+                "Would you rather have unlimited money or unlimited love?",
+                "Would you rather know how you die or when you die?",
+                "Would you rather be famous but hated or unknown but loved?",
+                "Would you rather live without music or without TV?",
+                "Would you rather be the funniest person or the smartest person in the room?",
+                "Would you rather have a rewind button or a pause button for life?",
+                "Would you rather always have to say everything on your mind or never speak again?",
+                "Would you rather be able to talk to animals or speak every language?",
+                "Would you rather lose all your memories or never make new ones?",
+                "Would you rather be able to read minds or predict the future?",
+                "Would you rather never be able to lie or never know the truth?",
+                "Would you rather have no eyebrows or no fingernails?",
+                "Would you rather live in the past or the future?"
+            ],
+            'categories': [
+                "Name a type of pizza topping!",
+                "Name a superhero!",
+                "Name a country in Europe!",
+                "Name a brand of car!",
+                "Name a Taylor Swift song!",
+                "Name a Netflix show!",
+                "Name a flavor of ice cream!",
+                "Name a sport!",
+                "Name a celebrity!",
+                "Name a Disney movie!",
+                "Name a social media platform!",
+                "Name a video game!",
+                "Name a type of pasta!",
+                "Name a musical instrument!",
+                "Name a fashion brand!"
+            ]
+        };
+
+        const Icon = ({ name, size = 24, className = "" }) => {
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            }, [name]);
+            return <i data-lucide={name} style={{ width: size, height: size }} className={className}></i>;
+        };
+
+        const MAX_PLAYERS = 2;
+
+        const App = () => {
+            // UI State
+            const [view, setView] = useState('welcome');
+            const [playerName, setPlayerName] = useState(() => localStorage.getItem('mixmaster_name') || '');
+            const [roomIdInput, setRoomIdInput] = useState('');
+            const [error, setError] = useState(null);
+            const [notifications, setNotifications] = useState([]);
+
+            // Save player name to localStorage
+            useEffect(() => {
+                if (playerName) localStorage.setItem('mixmaster_name', playerName);
+            }, [playerName]);
+
+            // Show in-app notification
+            const showNotification = (message, type = 'info') => {
+                const id = Date.now();
+                setNotifications(prev => [...prev, { id, message, type }]);
+                setTimeout(() => {
+                    setNotifications(prev => prev.filter(n => n.id !== id));
+                }, 3000);
+            };
+
+            // Broadcast notification to all peers
+            const broadcastNotification = (message, type = 'info', isMuted = null) => {
+                const notification = { type: 'NOTIFICATION', message, notificationType: type, isMuted, senderName: playerName };
+                if (isHost) {
+                    connections.forEach(conn => {
+                        if (conn.open) conn.send(notification);
+                    });
+                } else if (activeConn && activeConn.open) {
+                    activeConn.send(notification);
+                }
+            };
+
+            // Networking State
+            const [peer, setPeer] = useState(null);
+            const [isHost, setIsHost] = useState(false);
+            const [connections, setConnections] = useState([]); // Host: all connected peers
+            const [activeConn, setActiveConn] = useState(null); // Guest: connection to host
+
+            // Audio State
+            const [isMuted, setIsMuted] = useState(true); // Start muted
+            const [audioEnabled, setAudioEnabled] = useState(false);
+            const localStreamRef = useRef(null);
+            const remoteAudioRefs = useRef({});
+
+            // Refresh Lucide icons when isMuted changes
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            }, [isMuted]);
+
+            // Game State (Synced across peers)
+            const [roomState, setRoomState] = useState({
+                id: '',
+                players: [],
+                status: 'lobby',
+                currentMode: null,
+                currentPrompt: null,
+                activePlayerName: ''
+            });
+
+            // Track player mute states separately (for UI display in lobby)
+            const [playerMuteStates, setPlayerMuteStates] = useState({});
+
+            const gameModes = [
+                { id: 'truth-or-dare', name: 'Truth or Dare', icon: 'flame', color: 'from-orange-500 to-red-600', description: 'Secrets and dares.' },
+                { id: 'never-have-i-ever', name: 'Never Have I Ever', icon: 'ice-cream', color: 'from-pink-500 to-purple-600', description: 'Confess your past.' },
+                { id: 'would-you-rather', name: 'Would You Rather', icon: 'zap', color: 'from-blue-500 to-cyan-600', description: 'Impossible choices.' },
+                { id: 'categories', name: 'Categories', icon: 'message-circle', color: 'from-green-500 to-emerald-600', description: "Don't repeat an answer!" }
+            ];
+
+            // Cleanup on unmount
+            useEffect(() => {
+                return () => {
+                    cleanupPeer();
+                };
+            }, []);
+
+            // --- Host Logic: Broadcasting state ---
+            useEffect(() => {
+                if (isHost && connections.length > 0) {
+                    connections.forEach(conn => {
+                        if (conn.open) conn.send({ type: 'STATE_UPDATE', state: roomState });
+                    });
+                }
+            }, [roomState, connections, isHost]);
+
+            // --- Helper: Get display name for prompt types ---
+            const getPromptTypeName = (type) => {
+                const typeMap = {
+                    'Truth': 'Truth',
+                    'Dare': 'Dare',
+                    'NeverHaveIEver': 'Never Have I Ever',
+                    'WouldYouRather': 'Would You Rather',
+                    'Categories': 'Categories'
+                };
+                return typeMap[type] || type;
+            };
+
+            // --- Random Question Generator ---
+            const getRandomQuestion = (mode) => {
+                if (mode === 'truth-or-dare') {
+                    const isTruth = Math.random() > 0.5;
+                    const questions = isTruth ? questionBank['truth-or-dare'].truths : questionBank['truth-or-dare'].dares;
+                    return {
+                        type: isTruth ? 'Truth' : 'Dare',
+                        text: questions[Math.floor(Math.random() * questions.length)]
+                    };
+                } else {
+                    const questions = questionBank[mode];
+                    let promptType;
+                    switch (mode) {
+                        case 'never-have-i-ever':
+                            promptType = 'NeverHaveIEver';
+                            break;
+                        case 'would-you-rather':
+                            promptType = 'WouldYouRather';
+                            break;
+                        case 'categories':
+                            promptType = 'Categories';
+                            break;
+                        default:
+                            promptType = 'Prompt';
+                    }
+                    return {
+                        type: promptType,
+                        text: questions[Math.floor(Math.random() * questions.length)]
+                    };
+                }
+            };
+
+            // --- Peer Actions ---
+            /**
+             * Initialize a new PeerJS instance
+             * @param {string} [peerId] - Optional peer ID. If undefined, a random ID will be assigned by PeerJS.
+             *                            Use when creating a host with a specific room code.
+             */
+            const initializePeer = (peerId) => {
+                const newPeer = new Peer(peerId, {
+                    config: {
+                        iceServers: [
+                            { urls: 'stun:stun.l.google.com:19302' },
+                            { urls: 'stun:stun1.l.google.com:19302' },
+                            // TURN servers for reliable NAT/firewall traversal
+                            { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+                            { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+                            { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+                        ]
+                    }
+                });
+                setPeer(newPeer);
+
+                // Handle incoming audio calls
+                newPeer.on('call', (call) => {
+                    // Answer with our stream if we have one
+                    if (localStreamRef.current) {
+                        call.answer(localStreamRef.current);
+                    } else {
+                        call.answer(); // Answer without stream
+                    }
+
+                    call.on('stream', (remoteStream) => {
+                        playRemoteAudio(call.peer, remoteStream);
+                    });
+                });
+
+                return newPeer;
+            };
+
+            // Ref to track active calls to prevent leaks
+            const callsRef = useRef([]);
+
+            // Ref to track the current peer for cleanup
+            const peerRef = useRef(null);
+
+            // Cleanup function to destroy peer and close all calls
+            const cleanupPeer = () => {
+                // Close all active calls
+                callsRef.current.forEach(call => {
+                    try { call.close(); } catch (e) { }
+                });
+                callsRef.current = [];
+                // Destroy the peer
+                if (peerRef.current) {
+                    try { peerRef.current.destroy(); } catch (e) { }
+                    peerRef.current = null;
+                }
+            };
+
+            // Audio functions
+            const playRemoteAudio = (peerId, stream) => {
+                // Create or reuse audio element for this peer
+                if (!remoteAudioRefs.current[peerId]) {
+                    const audio = new Audio();
+                    audio.autoplay = true;
+                    audio.srcObject = stream;
+                    remoteAudioRefs.current[peerId] = audio;
+                } else {
+                    remoteAudioRefs.current[peerId].srcObject = stream;
+                }
+            };
+
+            const toggleMic = async () => {
+                if (!peer) return;
+
+                if (isMuted) {
+                    // Unmute - get microphone access
+                    try {
+                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                        localStreamRef.current = stream;
+                        setAudioEnabled(true);
+                        setIsMuted(false);
+                        showNotification('🎤 Microphone enabled', 'success');
+                        // Bug #4 fix: Broadcast mute state to guests
+                        broadcastNotification(`🎤 ${playerName} enabled microphone`, 'success', false);
+
+                        // Update roomState.players with mute state (Bug #4 fix)
+                        setRoomState(prev => ({
+                            ...prev,
+                            players: prev.players.map(p =>
+                                p.name === playerName ? { ...p, isMuted: false } : p
+                            )
+                        }));
+
+                        // Close any existing calls before creating new ones (Bug #1 fix)
+                        callsRef.current.forEach(call => {
+                            try { call.close(); } catch (e) { }
+                        });
+                        callsRef.current = [];
+
+                        // Call all connected peers (if host) or call host (if guest)
+                        if (isHost) {
+                            connections.forEach(conn => {
+                                if (conn.open) {
+                                    const call = peer.call(conn.peer, stream);
+                                    // Track the call to prevent leaks
+                                    callsRef.current.push(call);
+                                    call.on('stream', (remoteStream) => {
+                                        playRemoteAudio(conn.peer, remoteStream);
+                                    });
+                                }
+                            });
+                        } else if (activeConn) {
+                            const call = peer.call(roomState.id, stream);
+                            // Track the call to prevent leaks
+                            callsRef.current.push(call);
+                            call.on('stream', (remoteStream) => {
+                                playRemoteAudio(roomState.id, remoteStream);
+                            });
+                        }
+                    } catch (err) {
+                        // Bug #8 fix: Show descriptive error message
+                        let errorMessage = "Mic access denied";
+                        if (err) {
+                            if (err.message) {
+                                errorMessage = err.message;
+                            } else if (err.name === 'NotFoundError') {
+                                errorMessage = "No microphone found";
+                            } else if (err.name === 'NotAllowedError') {
+                                errorMessage = "Microphone permission denied";
+                            } else if (err.name === 'PermissionDeniedError') {
+                                errorMessage = "Microphone permission denied";
+                            }
+                        }
+                        setError(errorMessage);
+                        // Show notification with error for all views
+                        showNotification(errorMessage, 'error');
+                    }
+                } else {
+                    // Mute - stop tracks (Bug #12 fix: properly cleanup media stream)
+                    if (localStreamRef.current) {
+                        localStreamRef.current.getTracks().forEach(track => {
+                            track.stop();
+                            track.enabled = false;
+                        });
+                        localStreamRef.current = null;
+                    }
+                    setIsMuted(true);
+                    showNotification('🔇 Microphone muted', 'info');
+                    // Bug #4 fix: Broadcast mute state to guests
+                    broadcastNotification(`🔇 ${playerName} muted microphone`, 'info', true);
+
+                    // Update roomState.players with mute state (Bug #4 fix)
+                    setRoomState(prev => ({
+                        ...prev,
+                        players: prev.players.map(p =>
+                            p.name === playerName ? { ...p, isMuted: true } : p
+                        )
+                    }));
+                }
+            };
+
+            const unmuteMic = () => {
+                if (localStreamRef.current) {
+                    localStreamRef.current.getTracks().forEach(track => track.enabled = true);
+                    setIsMuted(false);
+                }
+            };
+
+            const leaveRoom = () => {
+                cleanupPeer();
+                setRoomState({
+                    id: '',
+                    players: [],
+                    status: 'lobby',
+                    currentMode: null,
+                    currentPrompt: null,
+                    activePlayerName: ''
+                });
+                setView('welcome');
+                setError(null);
+            };
+
+            const createRoom = () => {
+                if (!playerName.trim()) return setError("Name required");
+                // Bug #9 fix: Destroy existing peer before creating new one to avoid duplicate ID on reload
+                cleanupPeer();
+                const id = Math.random().toString(36).substring(2, 6).toUpperCase();
+                const p = initializePeer(id);
+
+                p.on('open', () => {
+                    // Store peer reference for cleanup
+                    peerRef.current = p;
+                    setIsHost(true);
+                    // Initialize mute states
+                    const initialMuteStates = { [playerName]: false };
+                    setPlayerMuteStates(initialMuteStates);
+                    setRoomState(prev => ({
+                        ...prev,
+                        id: id,
+                        players: [{ name: playerName, isHost: true, isMuted: false }]
+                    }));
+                    setView('lobby');
+                });
+
+                p.on('connection', (conn) => {
+                    // Bug #6 fix: Track if this connection has acknowledged the JOIN
+                    const acknowledged = { current: false };
+
+                    conn.on('open', () => {
+                        // Check if room is full (using MAX_PLAYERS)
+                        setConnections(prev => {
+                            if (prev.length >= MAX_PLAYERS - 1) {
+                                // Room full - reject connection
+                                conn.send({ type: 'ROOM_FULL' });
+                                setTimeout(() => conn.close(), 100);
+                                return prev;
+                            }
+                            return [...prev, conn];
+                        });
+                    });
+
+                    conn.on('data', (data) => {
+                        if (data.type === 'JOIN') {
+                            setRoomState(prev => {
+                                // Check if already at MAX_PLAYERS
+                                if (prev.players.length >= MAX_PLAYERS) {
+                                    conn.send({ type: 'ROOM_FULL' });
+                                    return prev;
+                                }
+                                // Bug #6 fix: Send JOIN_ACK first before sending STATE_UPDATE
+                                // This ensures the guest is ready to receive state
+                                setTimeout(() => {
+                                    if (conn.open) conn.send({ type: 'JOIN_ACK' });
+                                }, 50);
+                                // Bug #4 fix: Initialize mute state for new player
+                                const newPlayerName = data.playerName;
+                                const newState = {
+                                    ...prev,
+                                    players: [...prev.players, { name: newPlayerName, isHost: false, isMuted: false }]
+                                };
+                                showNotification(`${newPlayerName} joined the room`, 'success');
+                                return newState;
+                            });
+                        } else if (data.type === 'NOTIFICATION') {
+                            showNotification(data.message, data.notificationType);
+                            // Bug #4 fix: Update remote player's mute state in roomState.players for UI display
+                            // Note: Do NOT update local isMuted state - that should only change when the local user toggles their own mic
+                            if (typeof data.isMuted === 'boolean' && data.senderName) {
+                                setRoomState(prev => ({
+                                    ...prev,
+                                    players: prev.players.map(p =>
+                                        p.name === data.senderName ? { ...p, isMuted: data.isMuted } : p
+                                    )
+                                }));
+                            }
+                        }
+                    });
+                });
+
+                p.on('error', (err) => setError("Peer Error: " + err.type));
+            };
+
+            const joinRoom = () => {
+                if (!playerName.trim() || !roomIdInput.trim()) return setError("All fields required");
+                const id = roomIdInput.trim().toUpperCase();
+                // Bug #9 fix: Destroy existing peer before creating new one
+                cleanupPeer();
+                const p = initializePeer(); // Random ID for guest
+                let connectionTimeout = null;
+                let connected = false;
+                let receivedJoinAck = false;
+
+                p.on('open', () => {
+                    // Store peer reference for cleanup
+                    peerRef.current = p;
+                    const conn = p.connect(id, { reliable: true });
+                    setActiveConn(conn);
+
+                    // Set a timeout for connection attempt
+                    connectionTimeout = setTimeout(() => {
+                        if (!connected) {
+                            conn.close();
+                            p.destroy();
+                            setError("Connection timed out. Make sure the room code is correct and the host is online.");
+                        }
+                    }, 10000); // 10 second timeout
+
+                    conn.on('open', () => {
+                        connected = true;
+                        clearTimeout(connectionTimeout);
+                        conn.send({ type: 'JOIN', playerName: playerName });
+                        setIsHost(false);
+                        setView('lobby');
+                    });
+
+                    conn.on('data', (data) => {
+                        if (data.type === 'STATE_UPDATE') {
+                            setRoomState(data.state);
+                            if (data.state.status === 'playing') setView('game');
+                            else setView('lobby');
+                        } else if (data.type === 'ROOM_FULL') {
+                            setError(`Room is full. Maximum ${MAX_PLAYERS} players allowed.`);
+                            conn.close();
+                            p.destroy();
+                            setView('welcome');
+                        } else if (data.type === 'JOIN_ACK') {
+                            // Bug #6 fix: Received JOIN_ACK from host, now ready for state updates
+                            receivedJoinAck = true;
+                        } else if (data.type === 'STATE_UPDATE') {
+                            // Bug #6 fix: Only process state update after receiving JOIN_ACK
+                            if (receivedJoinAck) {
+                                setRoomState(data.state);
+                                if (data.state.status === 'playing') setView('game');
+                                else setView('lobby');
+                            }
+                        } else if (data.type === 'NOTIFICATION') {
+                            showNotification(data.message, data.notificationType);
+                            // Bug #4 fix: Update remote player's mute state in roomState.players for UI display
+                            // Note: Do NOT update local isMuted state - that should only change when the local user toggles their own mic
+                            if (typeof data.isMuted === 'boolean' && data.senderName) {
+                                setRoomState(prev => ({
+                                    ...prev,
+                                    players: prev.players.map(p =>
+                                        p.name === data.senderName ? { ...p, isMuted: data.isMuted } : p
+                                    )
+                                }));
+                            }
+                        }
+                    });
+
+                    conn.on('error', (err) => {
+                        clearTimeout(connectionTimeout);
+                        setError("Connection error: " + (err.message || "Failed to connect to room"));
+                        setView('welcome');
+                    });
+
+                    conn.on('close', () => {
+                        clearTimeout(connectionTimeout);
+                        if (connected) {
+                            setError("Disconnected from host");
+                            setView('welcome');
+                        }
+                    });
+                });
+
+                p.on('error', (err) => {
+                    clearTimeout(connectionTimeout);
+                    if (err.type === 'peer-unavailable') {
+                        setError("Room not found. Check the code and try again.");
+                    } else {
+                        setError("Connection error: " + err.type);
+                    }
+                });
+            };
+
+            const startGame = (modeId) => {
+                if (!isHost) return;
+                const prompt = getRandomQuestion(modeId);
+                const randomPlayer = roomState.players[Math.floor(Math.random() * roomState.players.length)];
+
+                setRoomState(prev => ({
+                    ...prev,
+                    status: 'playing',
+                    currentMode: modeId,
+                    currentPrompt: prompt,
+                    activePlayerName: randomPlayer.name
+                }));
+                setView('game');
+            };
+
+            const nextTurn = () => {
+                if (!isHost) return;
+                const prompt = getRandomQuestion(roomState.currentMode);
+                const randomPlayer = roomState.players[Math.floor(Math.random() * roomState.players.length)];
+
+                setRoomState(prev => ({
+                    ...prev,
+                    currentPrompt: prompt,
+                    activePlayerName: randomPlayer.name
+                }));
+            };
+
+            const Button = ({ children, onClick, variant = 'primary', icon, loading }) => {
+                const variants = {
+                    primary: 'bg-indigo-600 text-white shadow-xl shadow-indigo-500/20 active:scale-95 transition-all',
+                    secondary: 'bg-neutral-900 text-white border border-neutral-800 active:bg-neutral-800 transition-all'
+                };
+                return (
+                    <button onClick={onClick} disabled={loading} className={`${variants[variant]} flex items-center justify-center gap-3 px-6 py-4 rounded-[1.25rem] font-bold disabled:opacity-50 w-full touch-manipulation`}>
+                        {loading ? <Icon name="rotate-cw" className="animate-spin" /> : icon && <Icon name={icon} />}
+                        {children}
+                    </button>
+                );
+            };
+
+            return (
+                <div className="relative max-w-md mx-auto min-h-screen flex flex-col p-6 pb-safe overflow-hidden selection:bg-indigo-500/30">
+                    {/* Atmospheric background */}
+                    <div className="fixed inset-0 pointer-events-none">
+                        <div className="absolute top-[-20%] left-[-20%] w-[100%] h-[100%] bg-indigo-600/10 blur-[120px] rounded-full"></div>
+                        <div className="absolute bottom-[-20%] right-[-20%] w-[100%] h-[100%] bg-purple-600/10 blur-[120px] rounded-full"></div>
+                    </div>
+
+                    {/* Toast Notifications */}
+                    <div className="fixed top-4 right-4 left-4 z-50 flex flex-col gap-2 pointer-events-none">
+                        {notifications.map(n => (
+                            <div
+                                key={n.id}
+                                className={`pointer-events-auto px-4 py-3 rounded-2xl backdrop-blur-xl border shadow-lg animate-in slide-in-from-top-2 fade-in duration-300 flex items-center gap-3 ${n.type === 'success' ? 'bg-green-600/20 border-green-500/30 text-green-400' : 'bg-indigo-600/20 border-indigo-500/30 text-indigo-400'
+                                    }`}
+                            >
+                                <span className="text-sm font-bold">{n.message}</span>
+                            </div>
+                        ))}
+                    </div>
+
+                    {view === 'welcome' && (
+                        <div className="flex-grow flex flex-col justify-center gap-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
+                            <div className="text-center space-y-4">
+                                <div className="w-20 h-20 bg-indigo-600 rounded-[1.5rem] mx-auto flex items-center justify-center shadow-2xl rotate-12 transition-transform hover:rotate-0 duration-500">
+                                    <Icon name="dices" size={40} className="text-white" />
+                                </div>
+                                <h1 className="text-4xl font-black tracking-tighter pt-4 bg-gradient-to-b from-white to-neutral-500 bg-clip-text text-transparent">MixMaster</h1>
+                                <p className="text-neutral-500 font-medium px-4 text-sm leading-relaxed">The ultimate party game challenge.</p>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="group space-y-1">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-600 ml-4">Who are you?</label>
+                                    <input type="text" placeholder="Enter your name" value={playerName} onChange={(e) => setPlayerName(e.target.value)} className="w-full bg-neutral-900 border border-neutral-800 rounded-2xl px-6 py-4 focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-neutral-700" />
+                                </div>
+
+                                <div className="space-y-4 pt-2">
+                                    <Button onClick={createRoom} icon="plus">Create New Room</Button>
+                                    <div className="flex items-center gap-4 px-2">
+                                        <div className="h-px flex-grow bg-neutral-900"></div>
+                                        <span className="text-[10px] font-bold text-neutral-700">OR JOIN</span>
+                                        <div className="h-px flex-grow bg-neutral-900"></div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            placeholder="CODE"
+                                            value={roomIdInput}
+                                            onChange={(e) => setRoomIdInput(e.target.value.toUpperCase())}
+                                            className="w-0 flex-grow bg-neutral-900 border border-neutral-800 rounded-2xl px-6 py-4 focus:ring-2 focus:ring-indigo-500 outline-none text-center tracking-[0.3em] font-black text-lg"
+                                            maxLength={4}
+                                        />
+                                        <button
+                                            onClick={joinRoom}
+                                            className="shrink-0 w-16 h-16 bg-white text-black rounded-2xl flex items-center justify-center active:scale-90 transition-all"
+                                        >
+                                            <Icon name="arrow-right" size={28} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            {error && <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl text-red-500 text-center text-sm font-bold">{error}</div>}
+                        </div>
+                    )}
+
+                    {view === 'lobby' && (
+                        <div className="flex-grow flex flex-col animate-in fade-in slide-in-from-right-8 duration-500">
+                            <header className="flex items-center justify-between py-6">
+                                <button onClick={leaveRoom} className="p-3 bg-neutral-900 rounded-2xl text-neutral-400 hover:text-white"><Icon name="chevron-left" /></button>
+                                <div className="text-center">
+                                    <span className="text-[10px] font-black text-neutral-600 uppercase tracking-widest">Room Code</span>
+                                    <div className="text-3xl font-black tracking-[0.2em] text-indigo-500">{roomState.id}</div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={toggleMic}
+                                        className={`p-3 rounded-2xl transition-all ${isMuted ? 'bg-neutral-900 text-neutral-400' : 'bg-green-600 text-white shadow-lg shadow-green-500/30'}`}
+                                    >
+                                        <Icon name={isMuted ? "mic-off" : "mic"} size={20} />
+                                    </button>
+                                    <button onClick={() => {
+                                        // Bug #12 fix: Add try/catch for clipboard copy
+                                        navigator.clipboard.writeText(roomState.id).then(() => {
+                                            showNotification('📋 Room code copied!', 'success');
+                                        }).catch(err => {
+                                            showNotification('Failed to copy room code', 'error');
+                                            console.error('Clipboard error:', err);
+                                        });
+                                    }} className="p-3 bg-neutral-900 rounded-2xl text-neutral-400"><Icon name="share-2" /></button>
+                                </div>
+                            </header>
+
+                            <div className="flex-grow space-y-10 py-6 overflow-y-auto no-scrollbar">
+                                <section className="space-y-4">
+                                    <h2 className="text-xs font-black text-neutral-500 uppercase tracking-widest px-1">Party Members ({roomState.players?.length})</h2>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {roomState.players?.map((p, i) => (
+                                            <div key={i} className="flex items-center gap-3 bg-neutral-900/60 backdrop-blur-sm border border-neutral-800 p-3.5 rounded-2xl transition-all hover:border-neutral-700">
+                                                <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center font-black text-sm">{p.name.charAt(0)}</div>
+                                                <span className="font-bold text-sm truncate flex-grow">{p.name}</span>
+                                                {p.isHost && <Icon name="crown" size={12} className="text-yellow-500 shrink-0" />}
+                                                {/* Bug #4 fix: Display microphone icon showing mute status */}
+                                                <Icon name={p.isMuted ? "mic-off" : "mic"} size={16} className={`shrink-0 ${p.isMuted ? 'text-neutral-500' : 'text-green-500'}`} />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </section>
+
+                                <section className="space-y-4 pb-20">
+                                    <h2 className="text-xs font-black text-neutral-500 uppercase tracking-widest px-1">Choose Mode</h2>
+                                    <div className="grid grid-cols-1 gap-3">
+                                        {gameModes.map(m => (
+                                            <button key={m.id} onClick={() => startGame(m.id)} disabled={!isHost} className="group w-full flex items-center gap-5 bg-neutral-900/40 border border-neutral-800 p-5 rounded-[2rem] text-left active:scale-[0.98] transition-all disabled:opacity-50 hover:border-indigo-500/30">
+                                                <div className={`p-4 rounded-[1.25rem] bg-gradient-to-br ${m.color} shadow-lg shadow-black/40`}><Icon name={m.icon} size={24} className="text-white" /></div>
+                                                <div className="flex-grow">
+                                                    <h3 className="font-bold text-lg">{m.name}</h3>
+                                                    <p className="text-xs text-neutral-500 font-medium">{m.description}</p>
+                                                </div>
+                                                <Icon name="arrow-right" size={20} className="text-neutral-800 group-hover:text-white transition-colors" />
+                                            </button>
+                                        ))}
+                                    </div>
+                                </section>
+                            </div>
+                            {!isHost && (
+                                <div className="absolute bottom-8 left-6 right-6 bg-indigo-600/10 border border-indigo-500/20 p-5 rounded-3xl text-center backdrop-blur-xl">
+                                    <p className="text-xs text-indigo-400 font-bold uppercase tracking-[0.2em] animate-pulse">Waiting for host to pick...</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {view === 'game' && (
+                        <div className="flex-grow flex flex-col justify-between animate-in zoom-in fade-in duration-500">
+                            <header className="flex items-center justify-between py-6">
+                                <button onClick={() => setView('lobby')} className="p-3 bg-neutral-900 rounded-2xl"><Icon name="x" /></button>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={toggleMic}
+                                        className={`p-3 rounded-2xl transition-all ${isMuted ? 'bg-neutral-900 text-neutral-400' : 'bg-green-600 text-white shadow-lg shadow-green-500/30'}`}
+                                    >
+                                        <Icon name={isMuted ? "mic-off" : "mic"} size={20} />
+                                    </button>
+                                    <div className="bg-neutral-900 px-5 py-2 rounded-full border border-neutral-800 flex items-center gap-3">
+                                        <div className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]"></div>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">P2P Encrypted</span>
+                                    </div>
+                                </div>
+                            </header>
+
+                            <div className="flex-grow flex flex-col items-center justify-center text-center space-y-10 px-2">
+                                <div className="space-y-4">
+                                    <div className="relative inline-block">
+                                        <div className="absolute -inset-4 bg-indigo-500/20 blur-2xl rounded-full"></div>
+                                        <span className="relative px-6 py-2 rounded-full bg-indigo-600 text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-600/30">
+                                            {roomState.activePlayerName}'s Turn
+                                        </span>
+                                    </div>
+                                    <h2 className={`text-5xl font-black italic uppercase tracking-tighter ${roomState.currentPrompt?.type === 'Truth' ? 'text-blue-400' : roomState.currentPrompt?.type === 'Dare' ? 'text-red-400' : 'text-white'}`}>
+                                        {getPromptTypeName(roomState.currentPrompt?.type)}
+                                    </h2>
+                                </div>
+
+                                <div className="w-full relative group">
+                                    <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-[3.5rem] blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
+                                    <div className="relative bg-neutral-900/60 backdrop-blur-2xl border border-neutral-800 rounded-[3rem] p-10 md:p-14 shadow-2xl min-h-[250px] flex items-center justify-center">
+                                        <p className="text-2xl md:text-3xl font-bold leading-tight tracking-tight text-white animate-in fade-in slide-in-from-bottom-4">
+                                            {roomState.currentPrompt?.text}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 text-neutral-600 bg-neutral-900/30 px-4 py-2 rounded-full">
+                                    <Icon name="sparkles" size={14} className="text-indigo-400" />
+                                    <span className="text-[10px] font-bold uppercase tracking-widest">MixMaster Party</span>
+                                </div>
+                            </div>
+
+                            <footer className="pt-8 pb-4">
+                                {isHost ? (
+                                    <Button onClick={nextTurn} icon="rotate-cw">Next Challenge</Button>
+                                ) : (
+                                    <div className="bg-neutral-900/50 p-5 rounded-3xl border border-neutral-800 text-center animate-pulse-subtle">
+                                        <p className="text-xs text-neutral-500 font-bold uppercase tracking-widest">Waiting for host...</p>
+                                    </div>
+                                )}
+                            </footer>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>
