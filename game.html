@@ -304,24 +304,19 @@
                 const newPeer = new Peer(peerId, {
                     config: {
                         iceServers: [
-                            { urls: 'stun:stun.l.google.com:19302' },
-                            { urls: 'stun:stun1.l.google.com:19302' },
-                            // TURN servers for reliable NAT/firewall traversal
-                            { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-                            { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-                            { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+                            { urls: 'stun:stun.l.google.com:19302' }
                         ]
                     }
                 });
+
                 setPeer(newPeer);
 
                 // Handle incoming audio calls
                 newPeer.on('call', (call) => {
-                    // Answer with our stream if we have one
                     if (localStreamRef.current) {
                         call.answer(localStreamRef.current);
                     } else {
-                        call.answer(); // Answer without stream
+                        call.answer();
                     }
 
                     call.on('stream', (remoteStream) => {
@@ -331,6 +326,7 @@
 
                 return newPeer;
             };
+
 
             // Ref to track active calls to prevent leaks
             const callsRef = useRef([]);
